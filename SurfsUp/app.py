@@ -66,36 +66,73 @@ def precip():
 #station results page: returns the station information
 @app.route("/api/v1.0/stations")
 def station_display():
+    #Query the station data
     results_s = session.query(stations.id, stations.station, stations.name, stations.latitude, stations.longitude, stations.elevation).all()
+    #close the session
     session.close()
+    #use a dictionary comprehension to put results into a dictionary which can be jsonified
     station_dict = {id: (station, name, latitude, longitude, elevation) for id, station, name, latitude, longitude, elevation in results_s}
-
     # convert the data fram to json object and return
     return jsonify(station_dict)
 
-#temperature observations page: returns the temperatures
+#temperature observations page: returns the temperatures from the most active station in the previous year
 @app.route("/api/v1.0/tobs")
 def tobs_display():
-    station_activity = session.query(measures.station, func.count(measures.station)).group_by(measures.station).order_by(func.count(measures.station).desc()).all()
-    # Close Session
-    session.close()
+    #Query to find the most active station.  Note: This station is the most active for all time.
+    #It is not necessarily the most active station when considering only the past year.
+    station_activity = session.query(measures.station, func.count(measures.station)).\
+        group_by(measures.station).order_by(func.count(measures.station).desc()).all()
     most_active = station_activity[0][0]
 
+    #Query to find the previously slected station's temperature data for the last year.
     temps = session.query(measures.date, measures.tobs).\
     filter(measures.date >= year_earlier).\
     filter(measures.station == most_active).\
     all()
+
+    # Close Session
+    session.close()
     temps = {date: tobs for date, tobs in temps} 
     return jsonify(temps)
 
+#temperature statistics page:  returns min, avg and max temperature values from a specified start date until the most recent data
+#written with assistance from UofO/edX bootcamp's "Xpert Learning Assistant" AI
 @app.route("/api/v1.0/<start>")
 def stats_start(start):
-    result = session.query(func.min(measures.tobs)).\
-    filter(measures.date >= start).all()
+    #query the desired information
+    result = session.query(func.min(measures.tobs), func.avg(measures.tobs), func.max(measures.tobs)).\
+        filter(measures.date >= start).all()
+    
+    # Extract the values from the result
+    min_temp = result[0][0] 
+    avg_temp = result[0][1]
+    max_temp = result[0][2]
+    
     # Close Session
     session.close()
-    result_l = [result[0]]
-    return jsonify(result_l)
+    
+    #return the jsonified values
+    return jsonify({"minimum temperature": min_temp,
+                    'avgerage temperature': avg_temp,
+                    "maximum temperature:": max_temp})
 
+@app.route("/api/v1.0/<start>/<end>")
+def stats_start_end(start, end):
+    #query the desired information
+    result = session.query(func.min(measures.tobs), func.avg(measures.tobs), func.max(measures.tobs)).\
+        filter(measures.date >= start).filter(measures.date <= end)
+
+    # Extract the values from the result
+    min_temp = result[0][0] 
+    avg_temp = result[0][1]
+    max_temp = result[0][2]
+    
+    # Close Session
+    session.close()
+    
+    #return the jsonified values
+    return jsonify({'minimum temperature': min_temp,
+                    'avgerage temperature': avg_temp,
+                    'maximum temperature:': max_temp})
 if __name__ == '__main__':
     app.run(debug=True)
